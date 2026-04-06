@@ -15,6 +15,12 @@ Microsoft recently removed the approved customer list item lookup functionality 
 
 This extension is provided **as-is**, without warranty or support. Use it as a reference or starting point and validate it thoroughly in a non-production environment before deploying.
 
+**Deployment compatibility:**
+
+- This extension **can** be deployed alongside the **EDGE to AQMS Migration** module.
+- This extension **cannot** be deployed if the original **EDGE for Operations** modules are present, as conflicts will occur.
+- This extension should only be deployed **after** Microsoft releases the update that removes the ACL item lookup functionality from the Advanced Quality Management (AQMS) module. Deploying it before that update is applied may result in duplicate or conflicting behavior.
+
 ---
 
 ## Features
