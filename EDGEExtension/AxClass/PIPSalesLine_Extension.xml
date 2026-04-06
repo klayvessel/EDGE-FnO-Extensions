@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>PIPSalesLine_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[ExtensionOf(tableStr(SalesLine))]
+public final class PIPSalesLine_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>pipACLDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///     Gets the date to use for ACL validation.
+    /// </summary>
+    /// <param name="_deliveryDateControlMap">
+    ///     The calculated ship and receipt dates for the sales line; optional.
+    /// </param>
+    /// <returns>
+    ///     The applicable <c>ValidFromDate</c> value.
+    /// </returns>
+    public display ValidFromDate pipACLDate(SalesDeliveryDateControlMap _deliveryDateControlMap = null)
+    {
+        ValidFromDate   ret;
+    
+        switch(smmParametersTable::find().QMSACLDateType)
+        {
+            case QMSACLDateType::OrderDate :
+                ret = DateTimeUtil::date(this.salesTable().CreatedDateTime);
+                break;
+    
+            case QMSACLDateType::RequestedReceiptDate :
+                ret = _deliveryDateControlMap ? _deliveryDateControlMap.ReceiptDateRequested : this.ReceiptDateRequested;
+                break;
+    
+            case QMSACLDateType::RequestedShipDate :
+                ret = _deliveryDateControlMap ? _deliveryDateControlMap.ShippingDateRequested : this.ShippingDateRequested;
+                break;
+    
+            case QMSACLDateType::Today :
+                ret = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+                break;
+        }
+    
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>PIPSalesAgreementDataSourceEventHandler</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+public static class PIPSalesAgreementDataSourceEventHandler
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>AgreementLine_ItemId_OnLookup</Name>
+				<Source><![CDATA[
+    [FormControlEventHandler(formControlStr(SalesAgreement, AgreementLine_ItemId), FormControlEventType::Lookup)]
+    public static void AgreementLine_ItemId_OnLookup(FormControl sender, FormControlEventArgs e)
+    {
+        SalesAgreementHeader salesAgreementHeader = sender.formRun().dataSource(formDataSourceStr(SalesAgreement, SalesAgreementHeader)).cursor() as SalesAgreementHeader;
+        AgreementLine agreementLine = sender.formRun().dataSource(formDataSourceStr(SalesAgreement, ALine)).cursor() as AgreementLine;
+
+        QMSItemIdLookupControlEventArgs aclLookupArgs = QMSItemIdLookupControlEventArgs::newCallerRecord(formStr(SalesAgreement), sender, salesAgreementHeader);
+        QMSApprovedCustomerList::pipShouldSkipACLItemLookup(aclLookupArgs);
+
+        if (!aclLookupArgs.isCanceled()
+            && QMSApprovedCustomerList::pipExistValidForCustomer(
+                        salesAgreementHeader.CustAccount,
+                        agreementLine.pipACLFromDate(salesAgreementHeader),
+                        agreementLine.pipACLToDate(salesAgreementHeader)))
+        {
+            FormStringControl itemControl = sender as FormStringControl;
+            QMSApprovedCustomerList::pipItemLookup(sender, agreementLine, itemControl ? itemControl.text() : sender.valueStr(), sender.formRun());
+
+            FormControlCancelableSuperEventArgs ecs = e as FormControlCancelableSuperEventArgs;
+            ecs.CancelSuperCall();
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

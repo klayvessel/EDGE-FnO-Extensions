@@ -1,0 +1,16 @@
+﻿ACLItemLookupMethod=Approved item lookup method
+ ;Enum caption
+ApprovedItems=Approved items
+ ;Approved customers; Form/menu item caption
+ApprovedItemsTemp=Temporary table for approved items
+ ;Approved customers; Table name
+LegacyACL=Legacy Approved Customer
+ ;Field group
+NewLabel0=Label files created on 04/06/2026 16:20:44 for label file Id EDGEExt and language en-US
+ ;Label file comment - see above label
+NoApprovedItemsLookup=Do not show approved items
+ ;Enum element caption
+PreferAllItemsLookup=Show all items first
+ ;Enum element caption
+ShowApprovedItemsFirst=Show approved items first
+ ;Enum element caption

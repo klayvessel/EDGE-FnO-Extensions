@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxTableExtension xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>smmParametersTable.EDGEExtension</Name>
+	<FieldGroupExtensions />
+	<FieldGroups>
+		<AxTableFieldGroup>
+			<Name>PIPApprovedCustomerList</Name>
+			<Label>@EDGEExt:LegacyACL</Label>
+			<Fields>
+				<AxTableFieldGroupField>
+					<DataField>PIP2ACLItemLookupMethod</DataField>
+				</AxTableFieldGroupField>
+			</Fields>
+		</AxTableFieldGroup>
+	</FieldGroups>
+	<FieldModifications />
+	<Fields>
+		<AxTableField xmlns=""
+			i:type="AxTableFieldEnum">
+			<Name>PIP2ACLItemLookupMethod</Name>
+			<AssetClassification>Customer Content</AssetClassification>
+			<EnumType>PIP2ACLItemLookupMethod</EnumType>
+		</AxTableField>
+	</Fields>
+	<FullTextIndexes />
+	<Indexes />
+	<Mappings />
+	<PropertyModifications />
+	<RelationExtensions />
+	<RelationModifications />
+	<Relations />
+</AxTableExtension>

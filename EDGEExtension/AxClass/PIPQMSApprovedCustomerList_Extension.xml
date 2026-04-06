@@ -1,0 +1,454 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>PIPQMSApprovedCustomerList_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[ExtensionOf(tableStr(QMSApprovedCustomerList))]
+public final class PIPQMSApprovedCustomerList_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>pipExistValidForCustomer</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///     Determines whether an approved cutomer exists in the list.
+    /// </summary>
+    /// <param name="_custAccount">
+    ///     The customer account number.
+    /// </param>
+    /// <param name="_startDate">
+    ///     Start date of when the customer was on the list. If the start date is null, then current date is used.
+    /// </param>
+    /// <param name="_endDate">
+    ///     End date of when the customer was on the list. If the start date is null, then current date is used.
+    /// </param>
+    /// <returns>
+    ///     true if an approved customer exists in the list; otherwise, false.
+    /// </returns>
+    public static boolean pipExistValidForCustomer(
+        CustAccount     _custAccount,
+        ValidFromDate   _startDate  = dateNull(),
+        ValidToDate     _endDate    = dateNull()
+        )
+    {
+        QMSApprovedCustomerList pipApprovedCustomerList;
+        CustTable               custTable;
+        date                    fromDate;
+        date                    toDate;
+
+        custTable = CustTable::find(_custAccount);
+
+        fromDate = _startDate == dateNull() ? DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()) : _startDate;
+        toDate   = _endDate   == dateNull() ? fromDate : _endDate;
+
+        // Important: It's critical to have both ItemCode and ItemRelation as well as both CustomerCode and CustomerRelation specified in each OR
+        // clause, otherwise SQL Server may use a Clustered Index Scan (bad -- like a table scan) instead of an Index seek (good)
+        select firstOnly validTimeState(fromDate, toDate) RecId
+            from pipApprovedCustomerList
+            where (pipApprovedCustomerList.CustomerCode     == TableGroupAll::Table     && pipApprovedCustomerList.CustomerRelation == custTable.AccountNum)
+                || (pipApprovedCustomerList.CustomerCode    == TableGroupAll::GroupId   && pipApprovedCustomerList.CustomerRelation == custTable.QMSApprovedCustomerGroupId)
+                || (pipApprovedCustomerList.CustomerCode    == TableGroupAll::All       && pipApprovedCustomerList.CustomerRelation == '');
+
+        return pipApprovedCustomerList.RecId != 0;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pipExistValidItemForCustomer</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///     Gets a value indicating if an approved item exists for a cutomer.
+    /// </summary>
+    /// <param name="_custAccount">
+    ///     The customer account number.
+    /// </param>
+    /// <param name="_itemId">
+    ///     The item ID.
+    /// </param>
+    /// <param name="_startDate">
+    ///     Start date of when the customer was on the list. If the start date is null, then current date is used.
+    /// </param>
+    /// <param name="_endDate">
+    ///     End date of when the customer was on the list. If the start date is null, then current date is used.
+    /// </param>
+    /// <returns>
+    ///     true if an approved item variant for the customer in the list; otherwise, false.
+    /// </returns>
+    public static boolean pipExistValidItemForCustomer(CustAccount _custAccount, ItemId _itemId, ValidFromDate _startDate = dateNull(), ValidToDate _endDate = dateNull())
+    {
+        QMSApprovedCustomerList pipApprovedCustomerList;
+
+        if (_custAccount && _itemId)
+        {
+            InventTable inventTable = InventTable::find(_itemId);
+            if (inventTable)
+            {
+                CustTable custTable = CustTable::find(_custAccount);
+    
+                date fromDate = _startDate == dateNull() ? DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()) : _startDate;
+                date toDate   = _endDate   == dateNull() ? fromDate : _endDate;
+    
+                // Important: It's critical to have both ItemCode and ItemRelation as well as both CustomerCode and CustomerRelation specified in each OR
+                // clause, otherwise SQL Server may use a Clustered Index Scan (bad -- like a table scan) instead of an Index seek (good)
+                select firstOnly validTimeState(fromDate, toDate) RecId
+                    from pipApprovedCustomerList
+                    where ((pipApprovedCustomerList.CustomerCode        == TableGroupAll::Table     && pipApprovedCustomerList.CustomerRelation == custTable.AccountNum)
+                            || (pipApprovedCustomerList.CustomerCode    == TableGroupAll::GroupId   && pipApprovedCustomerList.CustomerRelation == custTable.QMSApprovedCustomerGroupId)
+                            || (pipApprovedCustomerList.CustomerCode    == TableGroupAll::All       && pipApprovedCustomerList.CustomerRelation == ''))
+                        && ((pipApprovedCustomerList.ItemCode           == TableGroupAll::Table     && pipApprovedCustomerList.ItemRelation     == inventTable.ItemId)
+                            || (pipApprovedCustomerList.ItemCode        == TableGroupAll::GroupId   && pipApprovedCustomerList.ItemRelation     == inventTable.QMSApprovedItemGroupId)
+                            || (PIPApprovedCustomerList.ItemCode        == TableGroupAll::All       && pipApprovedCustomerList.ItemRelation     == ''));
+            }
+        }
+    
+        return pipApprovedCustomerList.RecId != 0;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pipGetApprovedItems</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///     Retrieves all items approved for a customer.
+    /// </summary>
+    /// <param name="_custTable">
+    ///     The customer to check.
+    /// </param>
+    /// <param name="_startDate">
+    ///    The start date for the validation check.
+    /// </param>
+    /// <param name="_endDate">
+    ///    The end date for the validation check; optional. If not specified, <paramref name="_startDate"/> is used as the end date.
+    /// </param>
+    /// <param name="_approvedItemsToPopulate">
+    ///    A reference to a <c>TmpPIPApprovedItems</c> buffer to load the records into; optional.
+    /// </param>
+    /// <param name="_itemFilterStr">
+    ///    A lookup filter string used to restrict the item Id for the items to include in the result; optional.
+    /// </param>
+    /// <returns>
+    ///     A <c>TmpPIPApprovedItems</c> table with a list of the approved items.
+    /// </returns>
+    server static TmpPIPApprovedItems pipGetApprovedItems(
+        CustTable           _custTable,
+        ValidFromDate       _startDate,
+        ValidToDate         _endDate = dateNull(),
+        TmpPIPApprovedItems _approvedItemsToPopulate = null,
+        str                 _itemFilterStr = ''
+        )
+    {
+        InventTable                 inventTable;
+        InventTable                 inventTableTmp;
+        TmpPIPApprovedItems         approvedItems;
+        QMSApprovedCustomerListView pipApprovedCustomerListView;
+        date                        fromDate;
+        date                        toDate;
+
+        approvedItems.linkPhysicalTableInstance(_approvedItemsToPopulate);
+
+        RecordInsertList insertList = new RecordInsertList(tableNum(TmpPIPApprovedItems), true, true, true, true, true, approvedItems);
+
+        fromDate = _startDate == dateNull() ? DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()) : _startDate;
+        toDate   = _endDate   == dateNull() ? fromDate : _endDate;
+
+        // Important: It's critical to have both ItemCode and ItemRelation as well as both CustomerCode and CustomerRelation specified in each OR
+        // clause, otherwise SQL Server may use a Clustered Index Scan (bad -- like a table scan) instead of an Index seek (good)
+        while select ItemId, QMSApprovedItemGroupId, Product from inventTable
+            exists join pipApprovedCustomerListView
+                where ((pipApprovedCustomerListView.ItemCode            == TableGroupAll::Table     && pipApprovedCustomerListView.ItemRelation     == inventTable.ItemId)
+                        || (pipApprovedCustomerListView.ItemCode        == TableGroupAll::GroupId   && pipApprovedCustomerListView.ItemRelation     == inventTable.QMSApprovedItemGroupId)
+                        || (pipApprovedCustomerListView.ItemCode        == TableGroupAll::All       && pipApprovedCustomerListView.ItemRelation     == ''))
+                    && ((pipApprovedCustomerListView.CustomerCode       == TableGroupAll::Table     && pipApprovedCustomerListView.CustomerRelation == _custTable.AccountNum)
+                        || (pipApprovedCustomerListView.CustomerCode    == TableGroupAll::GroupId   && pipApprovedCustomerListView.CustomerRelation == _custTable.QMSApprovedCustomerGroupId)
+                        || (pipApprovedCustomerListView.CustomerCode    == TableGroupAll::All       && pipApprovedCustomerListView.CustomerRelation == ''))
+                    && (_itemFilterStr == '' || inventTable.ItemId like _itemFilterStr + '*')
+        {
+            QMSApprovedCustomerList pipApprovedCustomerListPriorityRecord = QMSApprovedCustomerList::pipGetPriorityRelation(
+                                            _custTable.AccountNum,
+                                            _custTable.QMSApprovedCustomerGroupId,
+                                            inventTable.ItemId,
+                                            inventTable.QMSApprovedItemGroupId);
+
+            if (pipApprovedCustomerListPriorityRecord.RecId)
+            {
+                QMSApprovedCustomerList pipApprovedCustomerList = pipApprovedCustomerListPriorityRecord.pipGetEffectiveAtSamePriorityLevel(fromDate, toDate);
+
+                if (pipApprovedCustomerList.RecId)
+                {
+                    inventTableTmp                  = InventTable::find(inventTable.ItemId);
+                    approvedItems.ItemId            = inventTable.ItemId;
+                    approvedItems.ItemName          = inventTableTmp.defaultProductName();
+                    approvedItems.NameAlias         = inventTable.NameAlias;
+                    approvedItems.ItemType          = inventTable.ItemType;
+                    approvedItems.ItemCode          = pipApprovedCustomerList.ItemCode;
+                    approvedItems.ApprovedItemGroup = inventTable.QMSApprovedItemGroupId;
+                    approvedItems.ValidFrom         = pipApprovedCustomerList.ValidFrom;
+                    approvedItems.ValidTo           = pipApprovedCustomerList.ValidTo;
+
+                    insertList.add(approvedItems);
+                }
+            }
+        }
+
+        insertList.insertDatabase();
+
+        return approvedItems;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pipGetEffectiveAtSamePriorityLevel</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///     Retrieves all item variants approved for a customer.
+    /// </summary>
+    /// <param name="_custTable">
+    ///     The customer to check.
+    /// </param>
+    /// <param name="_inventTable">
+    ///     The record from the <c>InventTable</c> table containing the released product master record.
+    /// </param>
+    /// <param name="_startDate">
+    ///    The start date for the validation check.
+    /// </param>
+    /// <param name="_endDate">
+    ///    The end date for the validation check; optional. If not specified, <paramref name="_startDate"/> is used as the end date.
+    /// </param>
+    /// <param name="_tmpInventDimCombination">
+    ///    A reference to a <c>InventDimCombination</c> buffer to load the records into; optional.
+    /// </param>
+    /// <returns>
+    ///     A TempDB instance of the <c>InventDimCombination</c> table with a list of the approved item variants.
+    /// </returns>
+    //public static InventDimCombination pipGetApprovedItemVariants(
+    //    CustTable           _custTable,
+    //    InventTable         _inventTable,
+    //    ValidFromDate       _startDate,
+    //    ValidToDate         _endDate = dateNull(),
+    //    InventDimCombination _tmpInventDimCombination = null)
+    //{
+    //    date fromDate = _startDate == dateNull() ? DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()) : _startDate;
+    //    date toDate   = _endDate   == dateNull() ? fromDate : _endDate;
+
+    //    InventDimCombination tmpInventDimCombination;
+    //    tmpInventDimCombination.setTempDB();
+    //    tmpInventDimCombination.linkPhysicalTableInstance(_tmpInventDimCombination);
+
+    //    RecordInsertList insertList = new RecordInsertList(tableNum(InventDimCombination), true, true, true, true, true, tmpInventDimCombination);
+
+    //    // Important: It's critical to have both ItemCode and ItemRelation as well as both CustomerCode and CustomerRelation specified in each OR
+    //    // clause, otherwise SQL Server may use a Clustered Index Scan (bad -- like a table scan) instead of an Index seek (good)
+    //    InventDimCombination inventDimCombination;
+    //    QMSApprovedCustomerListView pipApprovedCustomerListView;
+    //    while select inventDimCombination
+    //        where inventDimCombination.ItemId                           == _inventTable.ItemId
+    //        exists join pipApprovedCustomerListView
+    //            where ((pipApprovedCustomerListView.ItemCode            == TableGroupAll::Table     && pipApprovedCustomerListView.ItemRelation     == inventDimCombination.ItemId)
+    //                    || (pipApprovedCustomerListView.ItemCode        == TableGroupAll::GroupId   && pipApprovedCustomerListView.ItemRelation     == _inventTable.QMSApprovedItemGroupId)
+    //                    || (pipApprovedCustomerListView.ItemCode        == TableGroupAll::All       && pipApprovedCustomerListView.ItemRelation     == ''))
+    //                && ((pipApprovedCustomerListView.CustomerCode       == TableGroupAll::Table     && pipApprovedCustomerListView.CustomerRelation == _custTable.AccountNum)
+    //                    || (pipApprovedCustomerListView.CustomerCode    == TableGroupAll::GroupId   && pipApprovedCustomerListView.CustomerRelation == _custTable.QMSApprovedCustomerGroupId)
+    //                    || (pipApprovedCustomerListView.CustomerCode    == TableGroupAll::All       && pipApprovedCustomerListView.CustomerRelation == ''))
+    //    {
+    //        InventDim inventDimCriteria = inventDimCombination.inventDim();
+    //        QMSApprovedCustomerList pipApprovedCustomerListPriorityRecord = QMSApprovedCustomerList::pipGetPriorityRelation(
+    //                                        _custTable.AccountNum,
+    //                                        _custTable.QMSApprovedCustomerGroupId,
+    //                                        _inventTable.ItemId,
+    //                                        _inventTable.QMSApprovedItemGroupId,
+    //                                        inventDimCriteria);
+
+    //        if (pipApprovedCustomerListPriorityRecord.RecId)
+    //        {
+    //            QMSApprovedCustomerList pipApprovedCustomerList = pipApprovedCustomerListPriorityRecord.pipGetEffectiveAtSamePriorityLevel(fromDate, toDate, inventDimCriteria);
+
+    //            if (pipApprovedCustomerList.RecId)
+    //            {
+    //                tmpInventDimCombination.ItemId                  = inventDimCombination.ItemId;
+    //                tmpInventDimCombination.DistinctProductVariant  = InventDimCombination.DistinctProductVariant;
+    //                tmpInventDimCombination.InventDimId             = inventDimCombination.InventDimId;
+    //                tmpInventDimCombination.RetailVariantId         = inventDimCombination.RetailVariantId;
+
+    //                insertList.add(tmpInventDimCombination);
+    //            }
+    //        }
+    //    }
+
+    //    insertList.insertDatabase();
+
+    //    return tmpInventDimCombination;
+    //}
+
+    private QMSApprovedCustomerList pipGetEffectiveAtSamePriorityLevel(date _fromDate, date _toDate, InventDim _inventDimCriteria = null)
+    {
+        QMSApprovedCustomerList pipApprovedCustomerList;
+
+        if (this.InventDimId != InventDim::inventDimIdBlank() && _inventDimCriteria)
+        {
+            InventDimParm inventDimCriteriaParm = _inventDimCriteria.toDimParm();
+            InventDim inventDim;
+
+            select firstonly validTimeState(_fromDate, _toDate) pipApprovedCustomerList
+                where pipApprovedCustomerList.ItemRelation      == this.ItemRelation
+                    && pipApprovedCustomerList.ItemCode         == this.ItemCode
+                    && pipApprovedCustomerList.CustomerRelation == this.CustomerRelation
+                    && pipApprovedCustomerList.CustomerCode     == this.CustomerCode
+                #InventDimExistsJoinAllowBlank(pipApprovedCustomerList.InventDimId, inventDim, _inventDimCriteria, inventDimCriteriaParm, inventDimCriteriaParm);
+        }
+        else
+        {
+            select firstonly validTimeState(_fromDate, _toDate) pipApprovedCustomerList
+                where pipApprovedCustomerList.ItemRelation      == this.ItemRelation
+                    && pipApprovedCustomerList.ItemCode         == this.ItemCode
+                    && pipApprovedCustomerList.CustomerRelation == this.CustomerRelation
+                    && pipApprovedCustomerList.CustomerCode     == this.CustomerCode;
+        }
+
+        return pipApprovedCustomerList;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pipGetPriorityRelation</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///     Retieves the most applicable <c>PIPApprovedCustomerList</c> record when there are multiple
+    ///     records with a relationship between the item and customer via the table/group/all relations.
+    /// </summary>
+    /// <param name="_custAccount">
+    ///     Customer account number.
+    /// </param>
+    /// <param name="_pipApprovedCustGroupId">
+    ///     Approved customer group identification.
+    /// </param>
+    /// <param name="_itemId">
+    ///     Item identification.
+    /// </param>
+    /// <param name="_pipApprovedItemGroupId">
+    ///     Approved item group identification.
+    /// </param>
+    /// <param name="_inventDim">
+    ///     Record from the <c>InventDim</c> table containing the product dimension to restrict the results to. Optional.
+    /// </param>
+    /// <returns>
+    ///     Returns a <c>QMSApprovedCustomerList</c> record.
+    /// </returns>
+    private static QMSApprovedCustomerList pipGetPriorityRelation(
+        CustAccount                 _custAccount,
+        QMSApprovedCustomerGroupId  _pipApprovedCustGroupId,
+        ItemId                      _itemId,
+        QMSApprovedItemGroupId      _pipApprovedItemGroupId,
+        InventDim                   _inventDim = null)
+    {
+        date                        minDate = dateNull();
+        date                        lastDate = dateMax();
+    
+        QMSApprovedCustomerList     pipApprovedCustomerList;
+    
+        // Important: It's critical to have both ItemCode and ItemRelation as well as both CustomerCode and CustomerRelation specified in each OR
+        // clause, otherwise SQL Server may use a Clustered Index Scan (bad -- like a table scan) instead of an Index seek (good)
+        if (_inventDim && _inventDim.anyProductDimensionSpecified())
+        {
+            InventDimParm prodDimParm = _inventDim.toDimParm();
+            prodDimParm.clearTrackingDimensions();
+            prodDimParm.clearStorageDimensions();
+
+            InventDim inventDim;
+            select firstOnly validTimeState(minDate, lastDate) pipApprovedCustomerList
+                    order by CustomerCode, ItemCode asc
+                    where (pipApprovedCustomerList.ItemCode                 == TableGroupAll::Table     && pipApprovedCustomerList.ItemRelation     == _itemId)
+                        && ((pipApprovedCustomerList.CustomerCode           == TableGroupAll::Table     && pipApprovedCustomerList.CustomerRelation == _custAccount)
+                            || (pipApprovedCustomerList.CustomerCode        == TableGroupAll::GroupId   && pipApprovedCustomerList.CustomerRelation == _pipApprovedCustGroupId)
+                            || (pipApprovedCustomerList.CustomerCode        == TableGroupAll::All       && pipApprovedCustomerList.CustomerRelation == ''))
+                    #InventDimExistsJoinAllowBlank(pipApprovedCustomerList.InventDimId, inventDim, _inventDim, prodDimParm, prodDimParm);
+
+            if (!pipApprovedCustomerList.RecId)
+            {
+                select firstOnly validTimeState(minDate, lastDate) pipApprovedCustomerList
+                    order by CustomerCode, ItemCode asc
+                    where ((pipApprovedCustomerList.ItemCode                == TableGroupAll::GroupId   && pipApprovedCustomerList.ItemRelation     == _pipApprovedItemGroupId)
+                            || (pipApprovedCustomerList.ItemCode            == TableGroupAll::All       && pipApprovedCustomerList.ItemRelation     == ''))
+                        && ((pipApprovedCustomerList.CustomerCode           == TableGroupAll::Table     && pipApprovedCustomerList.CustomerRelation == _custAccount)
+                            || (pipApprovedCustomerList.CustomerCode        == TableGroupAll::GroupId   && pipApprovedCustomerList.CustomerRelation == _pipApprovedCustGroupId)
+                            || (pipApprovedCustomerList.CustomerCode        == TableGroupAll::All       && pipApprovedCustomerList.CustomerRelation == ''));
+            }
+        }
+        else
+        {
+            select firstonly validTimeState(minDate, lastDate) pipApprovedCustomerList
+                order by CustomerCode, ItemCode asc
+                where ((pipApprovedCustomerList.ItemCode                == TableGroupAll::Table     && pipApprovedCustomerList.ItemRelation     == _itemId)
+                        || (pipApprovedCustomerList.ItemCode            == TableGroupAll::GroupId   && pipApprovedCustomerList.ItemRelation     == _pipApprovedItemGroupId)
+                        || (pipApprovedCustomerList.ItemCode            == TableGroupAll::All       && pipApprovedCustomerList.ItemRelation     == ''))
+                    && ((pipApprovedCustomerList.CustomerCode           == TableGroupAll::Table     && pipApprovedCustomerList.CustomerRelation == _custAccount)
+                        || (pipApprovedCustomerList.CustomerCode        == TableGroupAll::GroupId   && pipApprovedCustomerList.CustomerRelation == _pipApprovedCustGroupId)
+                        || (pipApprovedCustomerList.CustomerCode        == TableGroupAll::All       && pipApprovedCustomerList.CustomerRelation == ''));
+        }
+    
+        return pipApprovedCustomerList;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pipItemLookup</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///     Performs a lookup of items associated with the specified record.
+    /// </summary>
+    /// <param name="_formStringControl">
+    ///     The form string control that will hold the user selected item.
+    /// </param>
+    /// <param name="_record">
+    ///     The record buffer that the list of items are associated with.
+    /// </param>
+    /// <param name="_filterStr">
+    ///     A filter string used to isolate a subset of associated items. Optional.
+    /// </param>
+    /// <param name="_caller">
+    ///     The caller of the lookup. Optional.
+    /// </param>
+    public static void pipItemLookup(FormStringControl _formStringControl, Common _record, str _filterStr = '', Object _caller = _formStringControl)
+    {
+        Args    args;
+        FormRun formRun;
+
+        args = new Args(formStr(PIPApprovedItemsLookup));
+        args.caller(_caller);
+        args.record(_record);
+        args.parm(_filterStr);
+
+        formRun = classfactory.formRunClass(args);
+        formRun.init();
+
+        _formStringControl.performFormLookup(formRun);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pipShouldSkipACLItemLookup</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///     Determines if the ACL item lookup should be skipped.
+    /// </summary>
+    /// <param name = "_eventArgs">The event args, set to cancelled to skip the ACL item lookup.</param>
+    public static void pipShouldSkipACLItemLookup(QMSItemIdLookupControlEventArgs _eventArgs)
+    {
+        if (!_eventArgs.parmIsCanceled() && smmParametersTable::find().PIP2ACLItemLookupMethod == PIP2ACLItemLookupMethod::Hide)
+        {
+            _eventArgs.parmIsCanceled(true);
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
